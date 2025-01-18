@@ -1,11 +1,11 @@
+import argparse
 import glob
 import json
+import math
+import operator
 import os
 import shutil
-import operator
 import sys
-import argparse
-import math
 
 import numpy as np
 
@@ -240,6 +240,11 @@ def adjust_axes(r, t, fig, axes):
  Draw plot using Matplotlib
 """
 def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, output_path, to_show, plot_color, true_p_bar):
+    # Jika dictionary kosong, log pesan dan keluar dari fungsi
+    if not dictionary:
+        print(f"No data available for {window_title}. Skipping plot.")
+        return
+
     # sort the dictionary by decreasing value, into a list of tuples
     sorted_dic_by_value = sorted(dictionary.items(), key=operator.itemgetter(1))
     # unpacking the list of tuples into two lists
@@ -295,7 +300,7 @@ def draw_plot_func(dictionary, n_classes, window_title, plot_title, x_label, out
             if i == (len(sorted_values)-1): # largest bar
                 adjust_axes(r, t, fig, axes)
     # set window title
-    fig.canvas.set_window_title(window_title)
+    fig.canvas.manager.set_window_title(window_title)
     # write classes in y axis
     tick_font_size = 12
     plt.yticks(range(n_classes), sorted_keys, fontsize=tick_font_size)
@@ -673,6 +678,10 @@ with open(output_files_path + "/output.txt", 'w') as output_file:
             tp[idx] += cumsum
             cumsum += val
         
+        if len(tp) == 0 or len(fp) == 0:
+            print(f"No TP or FP for class '{class_name}'. Skipping this class.")
+            continue
+
         rec = tp[:]
         for idx, val in enumerate(tp):
             rec[idx] = float(tp[idx]) / gt_counter_per_class[class_name]
@@ -682,6 +691,11 @@ with open(output_files_path + "/output.txt", 'w') as output_file:
             prec[idx] = float(tp[idx]) / (fp[idx] + tp[idx])
         
         f1 = 2.0 * np.array(prec) * np.array(rec) / (np.array(prec) + np.array(rec) + 1e-6)
+
+        if len(f1) == 0:
+            print(f"No valid detections for class '{class_name}'. Skipping F1 computation.")
+            continue
+
 
         i = np.argmax(f1)
         p, r, f1_score = prec[i], rec[i], f1[i]
@@ -719,7 +733,7 @@ with open(output_files_path + "/output.txt", 'w') as output_file:
             plt.fill_between(area_under_curve_x, 0, area_under_curve_y, alpha=0.2, edgecolor='r')
             # set window title
             fig = plt.gcf() # gcf - get current figure
-            fig.canvas.set_window_title('AP ' + class_name)
+            fig.canvas.manager.set_window_title('AP ' + class_name)
             # set plot title
             plt.title('class: ' + text)
             #plt.suptitle('This is a somewhat long figure title', fontsize=16)
@@ -742,16 +756,32 @@ with open(output_files_path + "/output.txt", 'w') as output_file:
         cv2.destroyAllWindows()
 
     output_file.write("\n# mAP of all classes\n")
-    mAP = sum_AP / n_classes
-    mRecall = np.mean(sum_recall)
-    mPrecision = np.mean(sum_precision)
-    mf1_score = 2.0 * mPrecision * mRecall / (mPrecision + mRecall)
-    text = "mAP = {0:.2f}%".format(mAP*100)
+
+    # Handle mRecall, mPrecision, and F1 Score calculations safely
+    if sum_precision and sum_recall:
+        mRecall = np.mean(sum_recall) if sum_recall else 0
+        mPrecision = np.mean(sum_precision) if sum_precision else 0
+        mf1_score = 2.0 * mPrecision * mRecall / (mPrecision + mRecall) if (mPrecision + mRecall) > 0 else 0
+        print("mRecall = {0:.2f}%".format(mRecall * 100))
+        print("mPrecision = {0:.2f}%".format(mPrecision * 100))
+        print("F1 Score = {0:.2f}%".format(mf1_score * 100))
+    else:
+        print("No valid detections. Setting mRecall, mPrecision, and F1 Score to 0.")
+        mRecall = 0
+        mPrecision = 0
+        mf1_score = 0
+
+    # Compute mAP safely
+    if n_classes > 0:
+        mAP = sum_AP / n_classes
+        text = "mAP = {0:.2f}%".format(mAP * 100)
+    else:
+        print("No classes found. Setting mAP to 0.")
+        mAP = 0
+        text = "mAP = 0.00%"
+
     output_file.write(text + "\n")
     print(text)
-    print("mRecall = {0:.2f}%".format(mRecall*100))
-    print("mPrecision = {0:.2f}%".format(mPrecision*100))
-    print("F1 Score = {0:.2f}%".format(f1_score*100))
 
 """
  Draw false negatives
